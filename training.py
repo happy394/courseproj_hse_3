@@ -2,8 +2,8 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import torchvision.models as models
-from transformers import AutoTokenizer, AutoModel
-from class_create import train_loader
+from sentence_transformers import SentenceTransformer
+from class_create import get_dataloaders
 
 class ProductVisionEncoder(nn.Module):
     def __init__(self, embed_size):
@@ -12,71 +12,102 @@ class ProductVisionEncoder(nn.Module):
         resnet = models.resnet50(weights=models.ResNet50_Weights.DEFAULT)
         modules = list(resnet.children())[:-1]
         self.resnet = nn.Sequential(*modules)
-        self.linear = nn.Linear(resnet.fc.in_features, embed_size)
-        self.batch_norm = nn.BatchNorm1d(embed_size)
+        self.projection = nn.Sequential(
+            nn.Linear(resnet.fc.in_features, embed_size),
+            nn.BatchNorm1d(embed_size),
+        )
 
     def forward(self, images):
         features = self.resnet(images)
         features = features.view(features.size(0), -1)
-        visual_embeddings = self.batch_norm(self.linear(features))
+        return self.projection(features)
 
-        return visual_embeddings
 
-llm_embedding_size = 768
-cnn_model = ProductVisionEncoder(embed_size=llm_embedding_size)
+def train():
+    if torch.cuda.is_available():
+        device = torch.device('cuda')
+    elif torch.backends.mps.is_available():
+        device = torch.device('mps')
+    else:
+        device = torch.device('cpu')
+    print(f'[*] training on device: {device}')
 
-if torch.cuda.is_available():
-    device = torch.device('cuda')
-elif torch.backends.mps.is_available():
-    device = torch.device('mps')
-else:
-    device = torch.device('cpu')
-print(f'[*] training on device: {device}')
+    train_loader, val_loader = get_dataloaders(batch_size=32)
 
-tokenizer = AutoTokenizer.from_pretrained('distilbert-base-uncased')
-text_encoder = AutoModel.from_pretrained('distilbert-base-uncased').to(device)
+    text_encoder = SentenceTransformer('all-MiniLM-L6-v2')
+    embed_size = text_encoder.get_sentence_embedding_dimension()  # 384
+    print(f'[*] text embedding size: {embed_size}')
 
-for param in text_encoder.parameters():
-    param.requires_grad = False
+    model = ProductVisionEncoder(embed_size=embed_size).to(device)
 
-cnn_model = ProductVisionEncoder(embed_size=768).to(device)
-criterion = nn.MSELoss()
-optimizer = optim.Adam(cnn_model.parameters(), lr=0.0001)
+    criterion = nn.CosineEmbeddingLoss()
+    optimizer = optim.Adam(model.parameters(), lr=1e-4)
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(
+        optimizer, mode='min', factor=0.5, patience=2
+    )
 
-num_epochs = 5
+    num_epochs = 10
+    best_val_loss = float('inf')
 
-print('[*] starting training...')
-for epoch in range(num_epochs):
-    cnn_model.train()
-    running_loss = 0.0
+    print('[*] starting training...')
+    for epoch in range(num_epochs):
+        model.train()
+        train_loss = 0.0
 
-    for batch_idx, batch in enumerate(train_loader):
-        images = batch['image'].to(device)
-        descriptions = batch['description']
+        for batch_idx, batch in enumerate(train_loader):
+            images = batch['image'].to(device)
+            descriptions = batch['description']
 
-        text_inputs = tokenizer(descriptions, padding=True, truncation=True, return_tensors='pt').to(device)
+            text_emb = text_encoder.encode(
+                descriptions, convert_to_tensor=True
+            ).to(device).clone()
+
+            visual_emb = model(images)
+
+            target = torch.ones(images.size(0), device=device)
+            loss = criterion(visual_emb, text_emb, target)
+
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+
+            train_loss += loss.item()
+
+            if (batch_idx + 1) % 50 == 0:
+                print(f'  epoch {epoch+1}, batch {batch_idx+1}/{len(train_loader)}, loss: {loss.item():.4f}')
+
+        avg_train = train_loss / len(train_loader)
+
+        model.eval()
+        val_loss = 0.0
 
         with torch.no_grad():
-            text_outputs = text_encoder(**text_inputs)
-            target_embeddings = text_outputs.last_hidden_state[:, 0, :]
+            for batch in val_loader:
+                images = batch['image'].to(device)
+                descriptions = batch['description']
 
-        optimizer.zero_grad()
-        visual_embeddings = cnn_model(images)
+                text_emb = text_encoder.encode(
+                    descriptions, convert_to_tensor=True
+                ).to(device).clone()
 
-        loss = criterion(visual_embeddings, target_embeddings)
-        loss.backward()
+                visual_emb = model(images)
+                target = torch.ones(images.size(0), device=device)
+                loss = criterion(visual_emb, text_emb, target)
+                val_loss += loss.item()
 
-        optimizer.step()
+        avg_val = val_loss / len(val_loader)
+        scheduler.step(avg_val)
 
-        running_loss += loss.item()
+        current_lr = optimizer.param_groups[0]['lr']
+        print(f'--- epoch {epoch+1}/{num_epochs}  train_loss: {avg_train:.4f}  val_loss: {avg_val:.4f}  lr: {current_lr:.6f} ---')
 
-        if (batch_idx + 1) % 10 == 0:
-            print(f'Epoch [{epoch+1}/{num_epochs}], Batch [{batch_idx+1}/{len(train_loader)}], Loss: {loss.item():.4f}')
+        if avg_val < best_val_loss:
+            best_val_loss = avg_val
+            torch.save(model.state_dict(), 'trained_models/trained_product_cnn.pth')
+            print(f'[*] saved best model (val_loss: {avg_val:.4f})')
 
-    epoch_loss = running_loss / len(train_loader)
-    print(f'--- Epoch {epoch+1} completed. Average Loss: {epoch_loss:.4f} ---')
+    print(f'[*] training complete. best val_loss: {best_val_loss:.4f}')
 
-print('[*] training finished')
 
-torch.save(cnn_model.state_dict(), 'trained_models/trained_product_cnn.pth')
-print('model saved to trained_product_cnn.pth')
+if __name__ == '__main__':
+    train()

@@ -5,46 +5,67 @@ from PIL import Image
 
 class ECommerceProductDataset(Dataset):
     def __init__(self, dataframe, transform=None):
-        self.dataframe = dataframe
-        if transform is None:
-            self.transform = transforms.Compose([
-                transforms.Resize((224, 224)),
-                transforms.ToTensor(),
-                transforms.Normalize(
-                    mean=[0.485, 0.456, 0.406],
-                    std=[0.229, 0.224, 0.225]
-                )
-            ])
-        else:
-            self.transform = transform
+        self.dataframe = dataframe.reset_index(drop=True)
+        self.transform = transform or transforms.Compose([
+            transforms.Resize((224, 224)),
+            transforms.ToTensor(),
+            transforms.Normalize(
+                mean=[0.485, 0.456, 0.406],
+                std=[0.229, 0.224, 0.225]
+            )
+        ])
 
     def __len__(self): return len(self.dataframe)
 
     def __getitem__(self, idx):
         row = self.dataframe.iloc[idx]
-        img_path = row['local_image_path']
-        description = row['description']
-
-        image = Image.open(img_path).convert('RGB')
-
-        if self.transform:
-            image = self.transform(image)
-
+        image = Image.open(row['local_image_path']).convert('RGB')
+        image = self.transform(image)
         return {
             'image': image,
-            'description': description
+            'description': row['description']
         }
 
 
-cleaned_data = 'abo_dataset/cleaned_abo_dataset.csv'
-cleaned_data_df = pd.read_csv(cleaned_data)
-train_dataset = ECommerceProductDataset(dataframe=cleaned_data_df)
+def get_dataloaders(batch_size=32, val_ratio=0.15, seed=42):
+    df = pd.read_csv('abo_dataset/cleaned_abo_dataset.csv')
 
-train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
+    total = len(df)
+    val_size = int(total * val_ratio)
+    train_size = total - val_size
 
-for batch in train_loader:
-    images = batch['image']
-    descriptions = batch['description']
-    print(f'batch image tensor shape: {images.shape}') # should be [32, 3, 224, 224]
-    print(f'sample description: {descriptions[0]}')
-    break
+    train_df = df.iloc[:train_size].copy()
+    val_df = df.iloc[train_size:].copy()
+
+    train_df = train_df.sample(frac=1, random_state=seed).reset_index(drop=True)
+
+    train_dataset = ECommerceProductDataset(train_df, transform=train_transform)
+    val_dataset = ECommerceProductDataset(val_df, transform=val_transform)
+
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
+
+    print(f'[*] dataset loaded: {train_size} train / {val_size} val samples')
+    return train_loader, val_loader
+
+
+train_transform = transforms.Compose([
+    transforms.Resize((224, 224)),
+    transforms.ToTensor(),
+    transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                         std=[0.229, 0.224, 0.225])
+])
+
+val_transform = transforms.Compose([
+    transforms.Resize((224, 224)),
+    transforms.ToTensor(),
+    transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                         std=[0.229, 0.224, 0.225])
+])
+
+if __name__ == '__main__':
+    train_loader, val_loader = get_dataloaders()
+    for batch in train_loader:
+        print(f'batch image tensor shape: {batch["image"].shape}')
+        print(f'sample description: {batch["description"][0]}')
+        break
