@@ -5,14 +5,14 @@ import torchvision.models as models
 from sentence_transformers import SentenceTransformer
 from class_create import get_dataloaders
 
+
 class ProductVisionEncoder(nn.Module):
     def __init__(self, embed_size):
-        super(ProductVisionEncoder, self).__init__()
-
+        super().__init__()
         resnet = models.resnet50(weights=models.ResNet50_Weights.DEFAULT)
-        modules = list(resnet.children())[:-1]
-        self.resnet = nn.Sequential(*modules)
+        self.resnet = nn.Sequential(*list(resnet.children())[:-1])
         self.projection = nn.Sequential(
+            nn.Dropout(0.3),
             nn.Linear(resnet.fc.in_features, embed_size),
             nn.BatchNorm1d(embed_size),
         )
@@ -23,6 +23,22 @@ class ProductVisionEncoder(nn.Module):
         return self.projection(features)
 
 
+def freeze_early_layers(model):
+    frozen_count = 0
+    trainable_count = 0
+    for name, param in model.resnet.named_parameters():
+        if 'layer3' not in name and 'layer4' not in name:
+            param.requires_grad = False
+            frozen_count += 1
+        else:
+            trainable_count += 1
+
+    for param in model.projection.parameters():
+        trainable_count += 1
+
+    print(f'[*] frozen {frozen_count} params (early layers), {trainable_count} params trainable (layer3 + layer4 + projection)')
+
+
 def train():
     if torch.cuda.is_available():
         device = torch.device('cuda')
@@ -30,7 +46,7 @@ def train():
         device = torch.device('mps')
     else:
         device = torch.device('cpu')
-    print(f'[*] training on device: {device}')
+    print(f'[*] device: {device}')
 
     train_loader, val_loader = get_dataloaders(batch_size=32)
 
@@ -39,17 +55,20 @@ def train():
     print(f'[*] text embedding size: {embed_size}')
 
     model = ProductVisionEncoder(embed_size=embed_size).to(device)
+    freeze_early_layers(model)
 
     criterion = nn.CosineEmbeddingLoss()
-    optimizer = optim.Adam(model.parameters(), lr=1e-4)
+    optimizer = optim.Adam(
+        filter(lambda p: p.requires_grad, model.parameters()),
+        lr=1e-4
+    )
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-        optimizer, mode='min', factor=0.5, patience=2
+        optimizer, mode='min', factor=0.5, patience=3
     )
 
     num_epochs = 10
     best_val_loss = float('inf')
 
-    print('[*] starting training...')
     for epoch in range(num_epochs):
         model.train()
         train_loss = 0.0
@@ -64,8 +83,15 @@ def train():
 
             visual_emb = model(images)
 
-            target = torch.ones(images.size(0), device=device)
-            loss = criterion(visual_emb, text_emb, target)
+            pos_target = torch.ones(images.size(0), device=device)
+            pos_loss = criterion(visual_emb, text_emb, pos_target)
+
+            shuffled_idx = torch.randperm(text_emb.size(0))
+            neg_text_emb = text_emb[shuffled_idx]
+            neg_target = -torch.ones(images.size(0), device=device)
+            neg_loss = criterion(visual_emb, neg_text_emb, neg_target)
+
+            loss = (pos_loss + neg_loss) / 2
 
             optimizer.zero_grad()
             loss.backward()
@@ -91,8 +117,16 @@ def train():
                 ).to(device).clone()
 
                 visual_emb = model(images)
-                target = torch.ones(images.size(0), device=device)
-                loss = criterion(visual_emb, text_emb, target)
+
+                pos_target = torch.ones(images.size(0), device=device)
+                pos_loss = criterion(visual_emb, text_emb, pos_target)
+
+                shuffled_idx = torch.randperm(text_emb.size(0))
+                neg_text_emb = text_emb[shuffled_idx]
+                neg_target = -torch.ones(images.size(0), device=device)
+                neg_loss = criterion(visual_emb, neg_text_emb, neg_target)
+
+                loss = (pos_loss + neg_loss) / 2
                 val_loss += loss.item()
 
         avg_val = val_loss / len(val_loader)
@@ -104,7 +138,7 @@ def train():
         if avg_val < best_val_loss:
             best_val_loss = avg_val
             torch.save(model.state_dict(), 'trained_models/trained_product_cnn.pth')
-            print(f'[*] saved best model (val_loss: {avg_val:.4f})')
+            print(f'  -> saved best model (val_loss: {avg_val:.4f})')
 
     print(f'[*] training complete. best val_loss: {best_val_loss:.4f}')
 
