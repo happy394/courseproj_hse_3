@@ -48,7 +48,7 @@ def train():
         device = torch.device('cpu')
     print(f'[*] device: {device}')
 
-    train_loader, val_loader = get_dataloaders(batch_size=32)
+    train_loader, val_loader = get_dataloaders(csv_path='abo_dataset/cleaned_abo_dataset.csv', batch_size=32)
 
     text_encoder = SentenceTransformer('all-MiniLM-L6-v2')
     embed_size = text_encoder.get_sentence_embedding_dimension()  # 384
@@ -66,8 +66,10 @@ def train():
         optimizer, mode='min', factor=0.5, patience=3
     )
 
-    num_epochs = 10
+    num_epochs = 30
     best_val_loss = float('inf')
+    patience = 7
+    epochs_no_improve = 0
 
     for epoch in range(num_epochs):
         model.train()
@@ -137,8 +139,14 @@ def train():
 
         if avg_val < best_val_loss:
             best_val_loss = avg_val
+            epochs_no_improve = 0
             torch.save(model.state_dict(), 'trained_models/trained_product_cnn.pth')
             print(f'  -> saved best model (val_loss: {avg_val:.4f})')
+        else:
+            epochs_no_improve += 1
+            if epochs_no_improve >= patience:
+                print(f'[*] early stopping: no improvement for {patience} epochs')
+                break
 
     print(f'[*] training complete. best val_loss: {best_val_loss:.4f}')
 
