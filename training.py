@@ -48,7 +48,7 @@ def train():
         device = torch.device('cpu')
     print(f'[*] device: {device}')
 
-    train_loader, val_loader = get_dataloaders(csv_path='abo_dataset/cleaned_abo_dataset.csv', batch_size=32)
+    train_loader, val_loader = get_dataloaders(batch_size=32)
 
     text_encoder = SentenceTransformer('all-MiniLM-L6-v2')
     embed_size = text_encoder.get_sentence_embedding_dimension()  # 384
@@ -135,7 +135,7 @@ def train():
         scheduler.step(avg_val)
 
         current_lr = optimizer.param_groups[0]['lr']
-        print(f'--- epoch {epoch+1}/{num_epochs}  train_loss: {avg_train:.4f}  val_loss: {avg_val:.4f}  lr: {current_lr:.6f} ---')
+        print(f'--- epoch {epoch+1}/{num_epochs} train_loss: {avg_train:.4f} val_loss: {avg_val:.4f} lr: {current_lr:.6f} ---')
 
         if avg_val < best_val_loss:
             best_val_loss = avg_val

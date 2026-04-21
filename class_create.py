@@ -1,5 +1,5 @@
 import pandas as pd
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset, DataLoader, random_split
 from torchvision import transforms
 from PIL import Image
 
@@ -47,7 +47,7 @@ val_transform = transforms.Compose([
 ])
 
 
-def get_dataloaders(csv_path=None, batch_size=32,
+def get_dataloaders(csv_path='abo_dataset/cleaned_abo_dataset.csv', batch_size=32,
                     val_ratio=0.15, seed=42):
     df = pd.read_csv(csv_path)
 
@@ -71,7 +71,7 @@ def get_dataloaders(csv_path=None, batch_size=32,
 
 
 if __name__ == '__main__':
-    train_loader, val_loader = get_dataloaders(csv_path='abo_dataset/cleaned_abo_dataset.csv')
+    train_loader, val_loader = get_dataloaders()
     for batch in train_loader:
         print(f'batch image tensor shape: {batch["image"].shape}')
         print(f'sample description: {batch["description"][0]}')
