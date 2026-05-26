@@ -1,6 +1,7 @@
 .venv
 abo_dataset
-trained_models
 __pycache__
 deploy
 .DS_Store
+generation_cache.json
+uploads/

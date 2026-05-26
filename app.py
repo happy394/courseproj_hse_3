@@ -30,9 +30,10 @@ EMBED_SIZE = 384
 OLLAMA_HOST = os.environ.get('OLLAMA_HOST', 'http://localhost:11434')
 OLLAMA_URL = f'{OLLAMA_HOST}/api/generate'
 OLLAMA_MODEL = os.environ.get('OLLAMA_MODEL', 'mistral')
-CACHE_FILE = 'generation_cache.json'
+CACHE_FILE = 'cache/generation_cache.json'
 
 os.makedirs(UPLOAD_DIR, exist_ok=True)
+os.makedirs(os.path.dirname(CACHE_FILE), exist_ok=True)
 
 
 def load_cache() -> list:
@@ -87,14 +88,14 @@ def generate_description_ollama(decoded_features: dict) -> str:
     for category, label in category_labels.items():
         if category in decoded_features and decoded_features[category]:
             terms = [term for term, _ in decoded_features[category]]
-            feature_parts.append(f'- {label}: {', '.join(terms)}')
+            feature_parts.append(f"- {label}: {', '.join(terms)}")
 
     features_text = '\n'.join(feature_parts)
 
     prompt = (
         'You are an e-commerce copywriter. Based on the visual features detected '
         'in a product image by a computer vision model, write a short, appealing '
-        'product description (3-4 sentences). Focus on the product's appearance, '
+        "product description (3-4 sentences). Focus on the product's appearance, "
         'materials, and style. Do not invent brand names or prices. '
         'Do not mention that features were detected by a model.\n\n'
         f'Detected visual features:\n{features_text}\n\n'
@@ -373,7 +374,7 @@ async def export_csv(request: Request):
     return StreamingResponse(
         iter([output.getvalue()]),
         media_type='text/csv',
-        headers={'Content-Disposition': f'attachment; filename=batch_results_{time.strftime('%Y%m%d_%H%M%S')}.csv'},
+        headers={"Content-Disposition": f"attachment; filename=batch_results_{time.strftime('%Y%m%d_%H%M%S')}.csv"},
     )
 
 
