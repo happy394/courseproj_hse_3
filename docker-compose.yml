@@ -1,4 +1,21 @@
 services:
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    restart: unless-stopped
+
+  ollama-pull:
+    image: ollama/ollama:latest
+    depends_on:
+      - ollama
+    restart: "no"
+    entrypoint: ["sh", "-c", "until ollama -v 2>/dev/null; do sleep 2; done; ollama pull mistral"]
+    environment:
+      - OLLAMA_HOST=http://ollama:11434
+
   web:
     build: .
     ports:
@@ -10,15 +27,8 @@ services:
       - uploads:/app/uploads
       - cache:/app/cache
     depends_on:
-      - ollama
-    restart: unless-stopped
-
-  ollama:
-    image: ollama/ollama:latest
-    ports:
-      - "11434:11434"
-    volumes:
-      - ollama_data:/root/.ollama
+      ollama-pull:
+        condition: service_completed_successfully
     restart: unless-stopped
 
 volumes:

@@ -5,3 +5,4 @@ deploy
 .DS_Store
 generation_cache.json
 uploads/
+.pytest_cache
