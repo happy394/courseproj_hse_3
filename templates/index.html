@@ -1,0 +1,946 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Product Description Generator</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: #0f0f13;
+            color: #e0e0e0;
+            min-height: 100vh;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            border-bottom: 1px solid #2a2a3e;
+            padding: 1.5rem 2rem;
+        }
+
+        .header h1 { font-size: 1.5rem; font-weight: 600; color: #fff; }
+        .header p { color: #8888aa; font-size: 0.875rem; margin-top: 0.25rem; }
+
+        .status-bar {
+            display: flex;
+            gap: 1rem;
+            margin-top: 0.75rem;
+            font-size: 0.8rem;
+        }
+
+        .status-badge {
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+            padding: 0.25rem 0.6rem;
+            border-radius: 999px;
+            background: rgba(255,255,255,0.05);
+        }
+
+        .status-dot { width: 8px; height: 8px; border-radius: 50%; }
+        .status-dot.green { background: #22c55e; box-shadow: 0 0 6px #22c55e88; }
+        .status-dot.red { background: #ef4444; box-shadow: 0 0 6px #ef444488; }
+
+        .container { max-width: 1200px; margin: 0 auto; padding: 2rem; }
+
+        .tabs { display: flex; gap: 0.5rem; margin-bottom: 1.5rem; }
+
+        .tab {
+            padding: 0.6rem 1.2rem;
+            border-radius: 8px;
+            border: 1px solid #2a2a3e;
+            background: transparent;
+            color: #8888aa;
+            cursor: pointer;
+            font-size: 0.9rem;
+            transition: all 0.2s;
+        }
+
+        .tab:hover { border-color: #4a4a6e; color: #ccc; }
+        .tab.active { background: #1e1e3a; border-color: #6366f1; color: #fff; }
+
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+
+        /* Upload area (shared) */
+        .upload-area, .batch-upload-area {
+            border: 2px dashed #2a2a3e;
+            border-radius: 12px;
+            padding: 3rem 2rem;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s;
+            background: rgba(255,255,255,0.02);
+        }
+
+        .upload-area:hover, .upload-area.dragover,
+        .batch-upload-area:hover, .batch-upload-area.dragover {
+            border-color: #6366f1;
+            background: rgba(99, 102, 241, 0.05);
+        }
+
+        .upload-area svg, .batch-upload-area svg {
+            width: 48px; height: 48px; margin-bottom: 1rem; color: #6366f1;
+        }
+
+        .upload-area h3, .batch-upload-area h3 { color: #ccc; margin-bottom: 0.5rem; }
+        .upload-area p, .batch-upload-area p { color: #666; font-size: 0.85rem; }
+        .upload-area input, .batch-upload-area input { display: none; }
+
+        /* Results */
+        .result-panel { display: none; margin-top: 2rem; animation: fadeIn 0.3s ease; }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .result-grid {
+            display: grid;
+            grid-template-columns: 350px 1fr;
+            gap: 1.5rem;
+        }
+
+        @media (max-width: 768px) { .result-grid { grid-template-columns: 1fr; } }
+
+        .image-preview {
+            border-radius: 12px;
+            overflow: hidden;
+            border: 1px solid #2a2a3e;
+            background: #1a1a2e;
+        }
+
+        .image-preview img { width: 100%; display: block; }
+
+        .info-panel { display: flex; flex-direction: column; gap: 1rem; }
+
+        .card {
+            background: #1a1a2e;
+            border: 1px solid #2a2a3e;
+            border-radius: 12px;
+            padding: 1.25rem;
+        }
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.75rem;
+        }
+
+        .card-header h3 {
+            font-size: 0.85rem;
+            color: #8888aa;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .feature-category { margin-bottom: 0.75rem; }
+        .feature-category:last-child { margin-bottom: 0; }
+
+        .feature-label { font-size: 0.8rem; color: #6366f1; margin-bottom: 0.3rem; font-weight: 500; }
+
+        .feature-tags { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+
+        .feature-tag {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.3rem;
+            padding: 0.25rem 0.6rem;
+            border-radius: 6px;
+            font-size: 0.8rem;
+            background: rgba(99, 102, 241, 0.1);
+            border: 1px solid rgba(99, 102, 241, 0.2);
+        }
+
+        .feature-score { color: #6366f1; font-size: 0.7rem; font-weight: 600; }
+
+        .score-bar {
+            display: inline-block;
+            height: 3px;
+            border-radius: 2px;
+            background: #6366f1;
+            margin-left: 0.3rem;
+            vertical-align: middle;
+        }
+
+        .description-text { font-size: 0.95rem; line-height: 1.7; color: #d0d0e0; }
+
+        .meta-row { display: flex; gap: 1rem; font-size: 0.8rem; color: #666; margin-top: 0.5rem; }
+
+        .ollama-warning {
+            background: rgba(234, 179, 8, 0.1);
+            border: 1px solid rgba(234, 179, 8, 0.3);
+            border-radius: 8px;
+            padding: 0.75rem 1rem;
+            font-size: 0.85rem;
+            color: #eab308;
+        }
+
+        .ollama-warning code {
+            background: rgba(255,255,255,0.1);
+            padding: 0.15rem 0.4rem;
+            border-radius: 4px;
+            font-size: 0.8rem;
+        }
+
+        /* Copy button */
+        .btn-copy {
+            padding: 0.25rem 0.6rem;
+            border-radius: 5px;
+            border: 1px solid #2a2a3e;
+            background: transparent;
+            color: #888;
+            cursor: pointer;
+            font-size: 0.7rem;
+            transition: all 0.2s;
+            white-space: nowrap;
+        }
+
+        .btn-copy:hover { border-color: #6366f1; color: #ccc; }
+        .btn-copy.copied { border-color: #22c55e; color: #22c55e; }
+
+        /* Batch */
+        .batch-file-list { margin-top: 1rem; display: flex; flex-wrap: wrap; gap: 0.5rem; }
+
+        .batch-file-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
+            padding: 0.3rem 0.7rem;
+            background: #1a1a2e;
+            border: 1px solid #2a2a3e;
+            border-radius: 6px;
+            font-size: 0.8rem;
+            color: #ccc;
+        }
+
+        .batch-file-chip .remove-file { cursor: pointer; color: #666; font-size: 0.9rem; }
+        .batch-file-chip .remove-file:hover { color: #ef4444; }
+
+        .batch-controls { display: flex; gap: 0.75rem; align-items: center; margin-top: 1rem; }
+
+        .btn-primary {
+            padding: 0.6rem 1.5rem;
+            border-radius: 8px;
+            border: none;
+            background: #6366f1;
+            color: #fff;
+            cursor: pointer;
+            font-size: 0.9rem;
+            font-weight: 500;
+            transition: all 0.2s;
+        }
+
+        .btn-primary:hover { background: #5558e6; }
+        .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
+
+        .btn-secondary {
+            padding: 0.6rem 1.5rem;
+            border-radius: 8px;
+            border: 1px solid #2a2a3e;
+            background: transparent;
+            color: #ccc;
+            cursor: pointer;
+            font-size: 0.9rem;
+            transition: all 0.2s;
+        }
+
+        .btn-secondary:hover { border-color: #6366f1; color: #fff; }
+        .btn-secondary:disabled { opacity: 0.4; cursor: not-allowed; }
+
+        .batch-progress { margin-top: 1.25rem; display: none; }
+
+        .progress-bar-track {
+            width: 100%;
+            height: 8px;
+            background: #1a1a2e;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .progress-bar-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #6366f1, #818cf8);
+            border-radius: 4px;
+            transition: width 0.3s ease;
+            width: 0%;
+        }
+
+        .progress-label { margin-top: 0.4rem; font-size: 0.8rem; color: #888; }
+
+        .batch-results { margin-top: 1.5rem; display: none; }
+
+        .batch-results-toolbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+
+        .batch-results-toolbar h3 { font-size: 1rem; color: #ccc; }
+
+        .batch-table-wrap {
+            overflow-x: auto;
+            border: 1px solid #2a2a3e;
+            border-radius: 10px;
+        }
+
+        .batch-table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+
+        .batch-table th {
+            background: #1a1a2e;
+            color: #8888aa;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            font-size: 0.7rem;
+            padding: 0.7rem 0.8rem;
+            text-align: left;
+            border-bottom: 1px solid #2a2a3e;
+            white-space: nowrap;
+        }
+
+        .batch-table td {
+            padding: 0.6rem 0.8rem;
+            border-bottom: 1px solid #1a1a2e;
+            vertical-align: top;
+            color: #ccc;
+        }
+
+        .batch-table tr:last-child td { border-bottom: none; }
+        .batch-table tr:hover td { background: rgba(99, 102, 241, 0.03); }
+
+        .batch-table .thumb {
+            width: 50px;
+            height: 50px;
+            object-fit: cover;
+            border-radius: 6px;
+        }
+
+        .batch-table .desc-cell { max-width: 500px; line-height: 1.5; }
+        .batch-table .error-cell { color: #ef4444; }
+
+        .batch-table .btn-copy { vertical-align: top; margin-top: 0.2rem; }
+
+        /* Loading */
+        .loading-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(15, 15, 19, 0.85);
+            z-index: 100;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .loading-overlay.active { display: flex; }
+
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid #2a2a3e;
+            border-top-color: #6366f1;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .loading-text { color: #888; font-size: 0.9rem; }
+
+        .btn-back {
+            padding: 0.4rem 0.8rem;
+            border-radius: 6px;
+            border: 1px solid #2a2a3e;
+            background: transparent;
+            color: #888;
+            cursor: pointer;
+            font-size: 0.8rem;
+            margin-bottom: 1rem;
+            transition: all 0.2s;
+        }
+
+        .btn-back:hover { border-color: #6366f1; color: #fff; }
+
+        /* History */
+        .history-toolbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+
+        .history-count { color: #666; font-size: 0.85rem; }
+
+        .btn-clear {
+            padding: 0.4rem 0.8rem;
+            border-radius: 6px;
+            border: 1px solid #ef44443a;
+            background: transparent;
+            color: #ef4444;
+            cursor: pointer;
+            font-size: 0.8rem;
+            transition: all 0.2s;
+        }
+
+        .btn-clear:hover { background: rgba(239, 68, 68, 0.1); border-color: #ef4444; }
+
+        .history-empty { text-align: center; padding: 3rem; color: #555; }
+
+        .history-empty svg { width: 48px; height: 48px; margin-bottom: 1rem; color: #333; }
+
+        .history-list { display: flex; flex-direction: column; gap: 1rem; }
+
+        .history-item {
+            display: grid;
+            grid-template-columns: 120px 1fr auto;
+            gap: 1rem;
+            padding: 1rem;
+            background: #1a1a2e;
+            border: 1px solid #2a2a3e;
+            border-radius: 12px;
+            transition: all 0.2s;
+            cursor: pointer;
+        }
+
+        .history-item:hover { border-color: #4a4a6e; }
+
+        .history-item img { width: 120px; height: 90px; object-fit: cover; border-radius: 8px; }
+
+        .history-info { display: flex; flex-direction: column; gap: 0.3rem; min-width: 0; }
+
+        .history-info .h-source {
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: #6366f1;
+        }
+
+        .history-info .h-desc {
+            font-size: 0.85rem;
+            color: #ccc;
+            line-height: 1.5;
+            overflow: hidden;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+        }
+
+        .history-info .h-features { font-size: 0.75rem; color: #666; }
+        .history-info .h-time { font-size: 0.7rem; color: #555; margin-top: auto; }
+
+        .history-actions { display: flex; flex-direction: column; justify-content: center; gap: 0.4rem; }
+
+        .btn-delete {
+            padding: 0.3rem 0.5rem;
+            border-radius: 4px;
+            border: 1px solid transparent;
+            background: transparent;
+            color: #555;
+            cursor: pointer;
+            font-size: 0.75rem;
+            transition: all 0.2s;
+        }
+
+        .btn-delete:hover { color: #ef4444; border-color: #ef44443a; }
+
+        @media (max-width: 768px) {
+            .history-item { grid-template-columns: 80px 1fr auto; }
+            .history-item img { width: 80px; height: 60px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Product Description Generator</h1>
+        <p>Upload a product image to get AI-detected visual features and a generated description</p>
+        <div class="status-bar">
+            <div class="status-badge">
+                <div class="status-dot green"></div>
+                CNN Model loaded
+            </div>
+            <div class="status-badge">
+                <div class="status-dot {{ 'green' if ollama_available else 'red' }}" id="ollamaStatus"></div>
+                <span id="ollamaLabel">Ollama {{ 'connected' if ollama_available else 'offline' }}</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="tabs">
+            <button class="tab active" data-tab="upload">Upload Image</button>
+            <button class="tab" data-tab="batch">Batch Upload</button>
+            <button class="tab" data-tab="history">History</button>
+        </div>
+
+        <!-- Upload Tab -->
+        <div class="tab-content active" id="tab-upload">
+            <div class="upload-area" id="dropZone">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
+                </svg>
+                <h3>Drop an image here or click to upload</h3>
+                <p>Supports JPG, PNG, WebP (max 10 MB)</p>
+                <input type="file" id="fileInput" accept="image/jpeg,image/png,image/webp,image/bmp">
+            </div>
+
+            <div class="result-panel" id="resultPanel">
+                <button class="btn-back" onclick="resetUpload()">&#8592; Upload another image</button>
+                <div class="result-grid">
+                    <div class="image-preview">
+                        <img id="previewImg" src="" alt="Uploaded image">
+                    </div>
+                    <div class="info-panel">
+                        <div class="card">
+                            <h3 style="font-size:0.85rem;color:#8888aa;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.75rem">Detected Visual Features</h3>
+                            <div id="featuresContainer"></div>
+                        </div>
+                        <div class="card" id="descriptionCard">
+                            <div class="card-header">
+                                <h3>Generated Description</h3>
+                                <button class="btn-copy" onclick="copyText('descriptionText')">Copy</button>
+                            </div>
+                            <div id="descriptionContainer"></div>
+                        </div>
+                        <div class="meta-row" id="metaRow"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Batch Tab -->
+        <div class="tab-content" id="tab-batch">
+            <div class="batch-upload-area" id="batchDropZone">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 9.776c.112-.017.227-.026.344-.026h15.812c.117 0 .232.009.344.026m-16.5 0a2.25 2.25 0 00-1.883 2.542l.857 6a2.25 2.25 0 002.227 1.932H19.05a2.25 2.25 0 002.227-1.932l.857-6a2.25 2.25 0 00-1.883-2.542m-16.5 0V6A2.25 2.25 0 016 3.75h3.879a1.5 1.5 0 011.06.44l2.122 2.12a1.5 1.5 0 001.06.44H18A2.25 2.25 0 0120.25 9v.776" />
+                </svg>
+                <h3>Drop multiple images or click to select</h3>
+                <p>Up to 25 images per batch &middot; JPG, PNG, WebP (max 10 MB each)</p>
+                <input type="file" id="batchFileInput" accept="image/jpeg,image/png,image/webp,image/bmp" multiple>
+            </div>
+
+            <div class="batch-file-list" id="batchFileList"></div>
+
+            <div class="batch-controls" id="batchControls" style="display:none">
+                <button class="btn-primary" id="btnRunBatch" onclick="runBatch()">Process All</button>
+                <button class="btn-secondary" onclick="clearBatch()">Clear</button>
+                <span style="color:#666; font-size:0.8rem" id="batchFileCount"></span>
+            </div>
+
+            <div class="batch-progress" id="batchProgress">
+                <div class="progress-bar-track">
+                    <div class="progress-bar-fill" id="batchProgressFill"></div>
+                </div>
+                <div class="progress-label" id="batchProgressLabel">Processing...</div>
+            </div>
+
+            <div class="batch-results" id="batchResults">
+                <div class="batch-results-toolbar">
+                    <h3 id="batchResultsTitle">Results</h3>
+                    <div style="display:flex; gap:0.5rem">
+                        <button class="btn-secondary" onclick="exportCSV()">Export CSV</button>
+                        <button class="btn-secondary" onclick="resetBatch()">New Batch</button>
+                    </div>
+                </div>
+                <div class="batch-table-wrap">
+                    <table class="batch-table">
+                        <thead>
+                            <tr>
+                                <th></th>
+                                <th>File</th>
+                                <th>Description</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody id="batchTableBody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- History Tab -->
+        <div class="tab-content" id="tab-history">
+            <div class="history-toolbar">
+                <span class="history-count" id="historyCount"></span>
+                <button class="btn-clear" id="btnClearAll" onclick="clearHistory()">Clear All</button>
+            </div>
+            <div id="historyList" class="history-list"></div>
+            <div id="historyEmpty" class="history-empty" style="display:none">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <h3>No history yet</h3>
+                <p>Analyze some images to see past generations here</p>
+            </div>
+
+            <div class="result-panel" id="historyDetailPanel">
+                <button class="btn-back" onclick="hideHistoryDetail()">&#8592; Back to history</button>
+                <div class="result-grid">
+                    <div class="image-preview">
+                        <img id="historyPreviewImg" src="" alt="History image">
+                    </div>
+                    <div class="info-panel">
+                        <div class="card">
+                            <h3 style="font-size:0.85rem;color:#8888aa;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.75rem">Detected Visual Features</h3>
+                            <div id="historyFeaturesContainer"></div>
+                        </div>
+                        <div class="card" id="historyDescriptionCard">
+                            <div class="card-header">
+                                <h3>AI-Generated Description</h3>
+                                <button class="btn-copy" onclick="copyText('historyDescriptionText')">Copy</button>
+                            </div>
+                            <div id="historyDescriptionContainer"></div>
+                        </div>
+                        <div class="meta-row" id="historyMetaRow"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="loading-overlay" id="loading">
+        <div class="spinner"></div>
+        <div class="loading-text" id="loadingText">Analyzing image with CNN...</div>
+    </div>
+
+    <script>
+        // Copy to clipboard
+        function copyText(id) {
+            const el = document.getElementById(id);
+            if (!el) return;
+            navigator.clipboard.writeText(el.textContent).then(() => {
+                const btn = el.closest('.card').querySelector('.btn-copy');
+                if (btn) {
+                    btn.textContent = 'Copied!';
+                    btn.classList.add('copied');
+                    setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 1500);
+                }
+            });
+        }
+
+        function copyInline(btn, text) {
+            navigator.clipboard.writeText(text).then(() => {
+                btn.textContent = 'Copied!';
+                btn.classList.add('copied');
+                setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 1500);
+            });
+        }
+
+        // Tabs
+        document.querySelectorAll('.tab').forEach(tab => {
+            tab.addEventListener('click', () => {
+                document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+                document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+                tab.classList.add('active');
+                document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
+                if (tab.dataset.tab === 'history') loadHistory();
+            });
+        });
+
+        // Upload
+        const dropZone = document.getElementById('dropZone');
+        const fileInput = document.getElementById('fileInput');
+
+        dropZone.addEventListener('click', () => fileInput.click());
+        dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
+        dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+        dropZone.addEventListener('drop', e => {
+            e.preventDefault();
+            dropZone.classList.remove('dragover');
+            if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
+        });
+        fileInput.addEventListener('change', () => { if (fileInput.files.length) handleFile(fileInput.files[0]); });
+
+        function showLoading(text) {
+            document.getElementById('loadingText').textContent = text || 'Analyzing image...';
+            document.getElementById('loading').classList.add('active');
+        }
+
+        function hideLoading() {
+            document.getElementById('loading').classList.remove('active');
+        }
+
+        async function handleFile(file) {
+            showLoading('Processing image with CNN and generating features...');
+            const formData = new FormData();
+            formData.append('file', file);
+
+            try {
+                const resp = await fetch('/analyze', { method: 'POST', body: formData });
+                const data = await resp.json();
+                if (data.error) { alert(data.error); hideLoading(); return; }
+
+                displayResults(data, 'previewImg', 'featuresContainer', 'descriptionContainer', 'descriptionCard', 'metaRow', 'descriptionText');
+                document.getElementById('resultPanel').style.display = 'block';
+                dropZone.style.display = 'none';
+            } catch (err) { alert('Error: ' + err.message); }
+            hideLoading();
+        }
+
+        function displayResults(data, imgId, featId, descId, descCardId, metaId, descTextId) {
+            document.getElementById(imgId).src = data.image_url;
+
+            const featContainer = document.getElementById(featId);
+            featContainer.innerHTML = '';
+            for (const [category, tags] of Object.entries(data.features)) {
+                const div = document.createElement('div');
+                div.className = 'feature-category';
+                div.innerHTML = `<div class="feature-label">${category}</div><div class="feature-tags">` +
+                    tags.map(t => {
+                        const barWidth = Math.max(10, Math.round(t.score * 100));
+                        return `<span class="feature-tag">${t.term} <span class="feature-score">${t.score}</span><span class="score-bar" style="width:${barWidth}px"></span></span>`;
+                    }).join('') + '</div>';
+                featContainer.appendChild(div);
+            }
+
+            const descCard = document.getElementById(descCardId);
+            const descContainer = document.getElementById(descId);
+            if (data.description) {
+                descContainer.innerHTML = `<p class="description-text" id="${descTextId}">${data.description}</p>`;
+                descCard.style.display = 'block';
+            } else if (data.ollama_error) {
+                descContainer.innerHTML = `<div class="ollama-warning">Ollama unavailable: ${data.ollama_error}<br>Run <code>ollama serve</code> and <code>ollama pull mistral</code> to enable description generation.</div>`;
+                descCard.style.display = 'block';
+            }
+
+            document.getElementById(metaId).innerHTML =
+                `<span>Embedding: ${data.embedding_dim}-dim</span>` +
+                `<span>Time: ${data.elapsed_seconds}s</span>`;
+        }
+
+        function resetUpload() {
+            document.getElementById('resultPanel').style.display = 'none';
+            dropZone.style.display = 'block';
+            fileInput.value = '';
+        }
+
+        // Batch upload
+        let batchFiles = [];
+        let batchResultsData = [];
+
+        const batchDropZone = document.getElementById('batchDropZone');
+        const batchFileInput = document.getElementById('batchFileInput');
+
+        batchDropZone.addEventListener('click', () => batchFileInput.click());
+        batchDropZone.addEventListener('dragover', e => { e.preventDefault(); batchDropZone.classList.add('dragover'); });
+        batchDropZone.addEventListener('dragleave', () => batchDropZone.classList.remove('dragover'));
+        batchDropZone.addEventListener('drop', e => {
+            e.preventDefault();
+            batchDropZone.classList.remove('dragover');
+            addBatchFiles(Array.from(e.dataTransfer.files));
+        });
+        batchFileInput.addEventListener('change', () => {
+            addBatchFiles(Array.from(batchFileInput.files));
+            batchFileInput.value = '';
+        });
+
+        function addBatchFiles(files) {
+            const imageFiles = files.filter(f => f.type.startsWith('image/'));
+            for (const f of imageFiles) {
+                if (batchFiles.length >= 25) break;
+                if (!batchFiles.some(x => x.name === f.name && x.size === f.size)) {
+                    batchFiles.push(f);
+                }
+            }
+            renderBatchFileList();
+        }
+
+        function removeBatchFile(idx) {
+            batchFiles.splice(idx, 1);
+            renderBatchFileList();
+        }
+
+        function renderBatchFileList() {
+            const list = document.getElementById('batchFileList');
+            const controls = document.getElementById('batchControls');
+            const countLabel = document.getElementById('batchFileCount');
+            list.innerHTML = '';
+            if (batchFiles.length === 0) { controls.style.display = 'none'; return; }
+            controls.style.display = 'flex';
+            countLabel.textContent = `${batchFiles.length} / 25 images`;
+            batchFiles.forEach((f, i) => {
+                const chip = document.createElement('div');
+                chip.className = 'batch-file-chip';
+                chip.innerHTML = `${f.name} <span class="remove-file" onclick="removeBatchFile(${i})">&#10005;</span>`;
+                list.appendChild(chip);
+            });
+        }
+
+        function clearBatch() { batchFiles = []; renderBatchFileList(); }
+
+        async function runBatch() {
+            if (batchFiles.length === 0) return;
+            const btn = document.getElementById('btnRunBatch');
+            btn.disabled = true;
+            const progress = document.getElementById('batchProgress');
+            const fill = document.getElementById('batchProgressFill');
+            const label = document.getElementById('batchProgressLabel');
+            progress.style.display = 'block';
+            fill.style.width = '0%';
+            label.textContent = `Processing 0 / ${batchFiles.length}...`;
+            batchResultsData = [];
+            document.getElementById('batchTableBody').innerHTML = '';
+            document.getElementById('batchResults').style.display = 'none';
+            const total = batchFiles.length;
+
+            for (let i = 0; i < total; i++) {
+                label.textContent = `Processing ${i + 1} / ${total}: ${batchFiles[i].name}`;
+                fill.style.width = `${((i) / total) * 100}%`;
+                const formData = new FormData();
+                formData.append('files', batchFiles[i]);
+                try {
+                    const resp = await fetch('/batch-analyze', { method: 'POST', body: formData });
+                    const data = await resp.json();
+                    if (data.results && data.results.length > 0) {
+                        const result = data.results[0];
+                        result.filename = batchFiles[i].name;
+                        batchResultsData.push(result);
+                        appendBatchRow(result);
+                    }
+                } catch (err) {
+                    const errResult = { filename: batchFiles[i].name, error: err.message };
+                    batchResultsData.push(errResult);
+                    appendBatchRow(errResult);
+                }
+                fill.style.width = `${((i + 1) / total) * 100}%`;
+            }
+
+            label.textContent = `Done! ${total} image${total !== 1 ? 's' : ''} processed.`;
+            document.getElementById('batchResults').style.display = 'block';
+            document.getElementById('batchResultsTitle').textContent = `Results (${batchResultsData.length})`;
+            btn.disabled = false;
+        }
+
+        function appendBatchRow(r) {
+            const tbody = document.getElementById('batchTableBody');
+            document.getElementById('batchResults').style.display = 'block';
+            const tr = document.createElement('tr');
+
+            if (r.error) {
+                tr.innerHTML = `
+                    <td></td>
+                    <td>${r.filename}</td>
+                    <td class="error-cell">${r.error}</td>
+                    <td></td>`;
+            } else {
+                const desc = r.description || r.ollama_error || '';
+                const truncDesc = desc.length > 300 ? desc.slice(0, 300) + '...' : desc;
+                tr.innerHTML = `
+                    <td><img class="thumb" src="${r.image_url}" alt=""></td>
+                    <td>${r.filename}</td>
+                    <td class="desc-cell">${truncDesc}</td>
+                    <td><button class="btn-copy" onclick="copyInline(this, \`${desc.replace(/`/g, '\\`').replace(/\\/g, '\\\\')}\`)">Copy</button></td>`;
+            }
+
+            tbody.appendChild(tr);
+        }
+
+        async function exportCSV() {
+            try {
+                const resp = await fetch('/export-csv', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ results: batchResultsData }),
+                });
+                const blob = await resp.blob();
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = resp.headers.get('Content-Disposition')?.split('filename=')[1] || 'batch_results.csv';
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                URL.revokeObjectURL(url);
+            } catch (err) { alert('Export failed: ' + err.message); }
+        }
+
+        function resetBatch() {
+            batchFiles = [];
+            batchResultsData = [];
+            renderBatchFileList();
+            document.getElementById('batchProgress').style.display = 'none';
+            document.getElementById('batchResults').style.display = 'none';
+            document.getElementById('batchTableBody').innerHTML = '';
+        }
+
+        // History
+        async function loadHistory() {
+            try {
+                const resp = await fetch('/history');
+                const data = await resp.json();
+                const items = data.items || [];
+                document.getElementById('historyDetailPanel').style.display = 'none';
+                const list = document.getElementById('historyList');
+                const empty = document.getElementById('historyEmpty');
+                const count = document.getElementById('historyCount');
+                const btnClear = document.getElementById('btnClearAll');
+
+                if (items.length === 0) {
+                    list.style.display = 'none'; empty.style.display = 'block';
+                    count.textContent = ''; btnClear.style.display = 'none';
+                    return;
+                }
+
+                empty.style.display = 'none';
+                list.style.display = 'flex';
+                btnClear.style.display = 'inline-block';
+                count.textContent = `${items.length} generation${items.length !== 1 ? 's' : ''} cached`;
+                list.innerHTML = '';
+
+                items.forEach(item => {
+                    const topFeatures = [];
+                    for (const [cat, tags] of Object.entries(item.features || {})) {
+                        if (tags.length) topFeatures.push(tags[0].term);
+                    }
+                    const descPreview = item.description || item.ollama_error || 'No description';
+                    const sourceLabel = item.source?.startsWith('batch') ? 'Batch' : 'Upload';
+                    const div = document.createElement('div');
+                    div.className = 'history-item';
+                    div.innerHTML = `
+                        <img src="${item.image_url}" alt="cached" loading="lazy">
+                        <div class="history-info">
+                            <span class="h-source">${sourceLabel} &middot; ${item.original_filename || ''}</span>
+                            <span class="h-desc">${descPreview}</span>
+                            <span class="h-features">${topFeatures.join(' &middot; ')}</span>
+                            <span class="h-time">${item.timestamp} &middot; ${item.elapsed_seconds}s</span>
+                        </div>
+                        <div class="history-actions">
+                            <button class="btn-delete" title="Delete">&#10005;</button>
+                        </div>
+                    `;
+                    div.querySelector('.btn-delete').addEventListener('click', async (e) => {
+                        e.stopPropagation();
+                        await fetch('/history/' + item.id, { method: 'DELETE' });
+                        loadHistory();
+                    });
+                    div.addEventListener('click', () => showHistoryDetail(item));
+                    list.appendChild(div);
+                });
+            } catch (err) { console.error('Failed to load history:', err); }
+        }
+
+        function showHistoryDetail(item) {
+            document.getElementById('historyList').style.display = 'none';
+            document.getElementById('historyEmpty').style.display = 'none';
+            displayResults(item, 'historyPreviewImg', 'historyFeaturesContainer', 'historyDescriptionContainer', 'historyDescriptionCard', 'historyMetaRow', 'historyDescriptionText');
+            document.getElementById('historyDetailPanel').style.display = 'block';
+        }
+
+        function hideHistoryDetail() {
+            document.getElementById('historyDetailPanel').style.display = 'none';
+            document.getElementById('historyList').style.display = 'flex';
+        }
+
+        async function clearHistory() {
+            if (!confirm('Clear all cached generations?')) return;
+            await fetch('/history', { method: 'DELETE' });
+            loadHistory();
+        }
+    </script>
+</body>
+</html>
