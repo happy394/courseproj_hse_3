@@ -2,3 +2,5 @@
 abo_dataset
 trained_models
 __pycache__
+deploy
+.DS_Store
